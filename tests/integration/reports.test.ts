@@ -115,6 +115,32 @@ describe('reports on the fixture data', () => {
   });
 });
 
+describe('reports with very large totals', () => {
+  // 101 employees with the largest allowed bonus: the total (about 1.01 trillion) no longer fits
+  // DECIMAL(14, 2), which the totals were once cast to (SQL error 8115, a 500 from the API).
+  beforeAll(async () => {
+    await withDatabase(
+      (pool) =>
+        pool.request().batch(`
+          INSERT INTO dbo.Employee (FirstName, LastName, DepartmentID, Salary, Bonus)
+          SELECT TOP (101) 'Big', 'Bonus', 4, 9999999999.99, 9999999999.99
+          FROM sys.all_objects`),
+      { idempotent: false },
+    );
+  });
+  afterAll(resetFixture);
+
+  it('adds up the company total without overflowing', async () => {
+    // Fixture total 110,201.00 + 101 × 9,999,999,999.99
+    expect(await getTotalBonus()).toEqual({ totalBonus: 1010000110199.99 });
+  });
+
+  it('adds up a department total without overflowing', async () => {
+    const delta = (await getDepartmentsWithBonusAboveAverageSalary()).find((row) => row.departmentId === 4);
+    expect(delta).toMatchObject({ employeeCount: 101, totalBonus: 1009999999998.99, averageSalary: 9999999999.99 });
+  });
+});
+
 describe('reports with no employees', () => {
   beforeAll(async () => {
     await withDatabase((pool) => pool.request().batch('DELETE FROM dbo.Employee'), { idempotent: true });

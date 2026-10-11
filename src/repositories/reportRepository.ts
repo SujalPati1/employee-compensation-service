@@ -75,8 +75,10 @@ async function runReport<T>(query: string, log?: Logger): Promise<T[]> {
 export async function getTotalBonus(log?: Logger): Promise<TotalBonusReport> {
   // SUM already skips NULLs, but it returns NULL when no row has a bonus (or there are no rows).
   // The inner COALESCE states "no bonus counts as 0"; the outer one turns an empty result into 0.
+  // DECIMAL(38, 2) is what SUM of DECIMAL(12, 2) returns: a narrower type overflows once many
+  // large bonuses add up (an arithmetic overflow error, i.e. a 500).
   const [row] = await runReport<TotalBonusReport>(
-    `SELECT CAST(COALESCE(SUM(COALESCE(Bonus, 0)), 0) AS DECIMAL(14, 2)) AS totalBonus
+    `SELECT CAST(COALESCE(SUM(COALESCE(Bonus, 0)), 0) AS DECIMAL(38, 2)) AS totalBonus
      FROM dbo.Employee`,
     log,
   );
@@ -130,7 +132,7 @@ export async function getDepartmentsWithBonusAboveAverageSalary(log?: Logger): P
     `SELECT d.DepartmentID   AS departmentId,
             d.DepartmentName AS departmentName,
             COUNT(*)         AS employeeCount,
-            CAST(SUM(COALESCE(e.Bonus, 0)) AS DECIMAL(14, 2))  AS totalBonus,
+            CAST(SUM(COALESCE(e.Bonus, 0)) AS DECIMAL(38, 2))  AS totalBonus,
             CAST(ROUND(AVG(e.Salary), 2) AS DECIMAL(12, 2))     AS averageSalary
      FROM dbo.Department AS d
      INNER JOIN dbo.Employee AS e ON e.DepartmentID = d.DepartmentID
