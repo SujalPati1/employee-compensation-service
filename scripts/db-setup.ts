@@ -9,15 +9,14 @@
  * local.settings.json, so local setup needs nothing extra. Environment variables take
  * priority, which lets CI and the Azure deployment supply their own settings.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import sql from 'mssql';
-import { readDatabaseSettings, toMssqlConfig, type DatabaseSettings } from '../src/db/config';
-import { splitSqlBatches } from './sqlBatches';
+import { readdirSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { readDatabaseSettings } from '../src/db/config';
+import { applySqlFiles, countRows, ensureDatabaseExists } from './lib/applySql';
+import { loadLocalSettings } from './lib/localSettings';
 
 // Compiled to dist/scripts/db-setup.js, so the repo root is two levels up.
 const ROOT = resolve(__dirname, '..', '..');
-const SQL_DIR = join(ROOT, 'sql');
 
 interface Options {
   database?: string;
@@ -32,7 +31,7 @@ function parseOptions(args: string[]): Options {
       options.database = value;
       i++;
     } else if (args[i] === '--files' && value) {
-      options.files = value.split(',').map((file) => file.trim());
+      options.files = value.split(',').map((file) => join(ROOT, file.trim()));
       i++;
     } else {
       throw new Error(`Unknown or incomplete option "${args[i]}".`);
@@ -41,71 +40,16 @@ function parseOptions(args: string[]): Options {
   return options;
 }
 
-/** Copies Values from local.settings.json into process.env, without overriding variables already set. */
-function loadLocalSettings(): void {
-  const file = join(ROOT, 'local.settings.json');
-  if (!existsSync(file)) return;
-
-  const { Values = {} } = JSON.parse(readFileSync(file, 'utf8')) as { Values?: Record<string, string> };
-  for (const [key, value] of Object.entries(Values)) {
-    process.env[key] ??= value;
-  }
-}
-
 function defaultScripts(): string[] {
-  return readdirSync(SQL_DIR)
+  const sqlDir = join(ROOT, 'sql');
+  return readdirSync(sqlDir)
     .filter((file) => file.endsWith('.sql'))
     .sort()
-    .map((file) => join('sql', file));
-}
-
-/** Local databases are created here. In Azure the database is created by the Bicep template. */
-async function ensureDatabaseExists(settings: DatabaseSettings, database: string): Promise<void> {
-  // CREATE DATABASE cannot take a parameter, so the name is restricted to safe characters.
-  if (!/^[A-Za-z0-9_]+$/.test(database)) {
-    throw new Error(`Database name "${database}" may only contain letters, digits and underscores.`);
-  }
-
-  const master = await new sql.ConnectionPool(toMssqlConfig(settings, 'master')).connect();
-  try {
-    const result = await master.request().input('name', sql.NVarChar, database).query<{ exists: number }>(
-      'SELECT CASE WHEN DB_ID(@name) IS NULL THEN 0 ELSE 1 END AS [exists]',
-    );
-    if (result.recordset[0]?.exists === 0) {
-      await master.request().batch(`CREATE DATABASE [${database}]`);
-      console.log(`Created database ${database}.`);
-    }
-  } finally {
-    await master.close();
-  }
-}
-
-async function runScript(pool: sql.ConnectionPool, file: string): Promise<void> {
-  const batches = splitSqlBatches(readFileSync(join(ROOT, file), 'utf8'));
-  for (const [index, batch] of batches.entries()) {
-    try {
-      await pool.request().batch(batch);
-    } catch (error) {
-      const number = (error as { number?: number }).number;
-      throw new Error(
-        `${file}, batch ${index + 1}: ${(error as Error).message}${number ? ` (SQL error ${number})` : ''}`,
-        { cause: error },
-      );
-    }
-  }
-  console.log(`Ran ${file} (${batches.length} batch${batches.length === 1 ? '' : 'es'}).`);
-}
-
-async function printRowCounts(pool: sql.ConnectionPool): Promise<void> {
-  const result = await pool.request().query<{ departments: number; employees: number }>(
-    'SELECT (SELECT COUNT(*) FROM dbo.Department) AS departments, (SELECT COUNT(*) FROM dbo.Employee) AS employees',
-  );
-  const counts = result.recordset[0];
-  if (counts) console.log(`Database now has ${counts.departments} departments and ${counts.employees} employees.`);
+    .map((file) => join(sqlDir, file));
 }
 
 async function main(): Promise<void> {
-  loadLocalSettings();
+  loadLocalSettings(join(ROOT, 'local.settings.json'));
   const options = parseOptions(process.argv.slice(2));
   const settings = readDatabaseSettings();
   const database = options.database ?? settings.database;
@@ -113,15 +57,16 @@ async function main(): Promise<void> {
 
   console.log(`Target: ${settings.server}:${settings.port}, database ${database} (${settings.auth} auth).`);
 
-  if (settings.auth === 'sql') await ensureDatabaseExists(settings, database);
-
-  const pool = await new sql.ConnectionPool(toMssqlConfig(settings, database)).connect();
-  try {
-    for (const file of files) await runScript(pool, file);
-    await printRowCounts(pool);
-  } finally {
-    await pool.close();
+  if (settings.auth === 'sql' && (await ensureDatabaseExists(settings, database))) {
+    console.log(`Created database ${database}.`);
   }
+
+  await applySqlFiles(settings, database, files, (file, batchCount) =>
+    console.log(`Ran ${relative(ROOT, file)} (${batchCount} batch${batchCount === 1 ? '' : 'es'}).`),
+  );
+
+  const counts = await countRows(settings, database);
+  console.log(`Database now has ${counts.departments} departments and ${counts.employees} employees.`);
 }
 
 main().catch((error: unknown) => {

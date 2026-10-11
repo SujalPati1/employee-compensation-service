@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitSqlBatches } from '../../scripts/sqlBatches';
+import { splitSqlBatches } from '../../scripts/lib/sqlBatches';
 
 describe('splitSqlBatches', () => {
   it('splits on lines that contain only GO', () => {
