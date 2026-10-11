@@ -1,0 +1,22 @@
+# Files excluded from the package deployed to Azure.
+*.js.map
+*.ts
+.git*
+.github
+.vscode
+.env*
+local.settings*.json
+coverage
+dist/scripts
+infra
+scripts
+sql
+tests
+docker-compose.yml
+requests.http
+eslint.config.mjs
+vitest.config.mts
+tsconfig*.json
+*.md
+node_modules/@types/
+node_modules/typescript/

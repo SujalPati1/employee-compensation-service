@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-azuretools.vscode-azurefunctions",
+    "ms-mssql.mssql",
+    "humao.rest-client",
+    "dbaeumer.vscode-eslint",
+    "vitest.explorer"
+  ]
+}

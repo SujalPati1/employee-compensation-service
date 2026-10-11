@@ -1,0 +1,5 @@
+{
+  // Build config: compiles only the app (src) and helper scripts (scripts) into dist/.
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+}
