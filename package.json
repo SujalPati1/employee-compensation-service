@@ -17,6 +17,7 @@
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:setup": "npm run build && node dist/scripts/db-setup.js",
+    "deploy": "npm run build && node dist/scripts/deploy.js",
     "prestart": "npm run clean && npm run build",
     "start": "func start",
     "test": "vitest run",

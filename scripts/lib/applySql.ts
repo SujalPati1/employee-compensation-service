@@ -58,6 +58,31 @@ export async function applySqlFiles(
   }
 }
 
+/**
+ * Gives a Microsoft Entra identity (here, the Function App's managed identity, which is named
+ * after the app) read and write access to table data, and nothing else: it cannot change the
+ * schema or manage users. Safe to run repeatedly.
+ */
+export async function grantAppAccess(settings: DatabaseSettings, database: string, principalName: string): Promise<void> {
+  const pool = await new sql.ConnectionPool(toMssqlConfig(settings, database)).connect();
+  try {
+    // CREATE USER and ALTER ROLE need an identifier, not a parameter, so the name goes through
+    // QUOTENAME inside dynamic SQL and the name itself is passed as a parameter.
+    await pool
+      .request()
+      .input('principalName', sql.NVarChar(128), principalName)
+      .batch(`
+        DECLARE @user NVARCHAR(260) = QUOTENAME(@principalName);
+        IF DATABASE_PRINCIPAL_ID(@principalName) IS NULL
+            EXEC (N'CREATE USER ' + @user + N' FROM EXTERNAL PROVIDER');
+        EXEC (N'ALTER ROLE db_datareader ADD MEMBER ' + @user);
+        EXEC (N'ALTER ROLE db_datawriter ADD MEMBER ' + @user);
+      `);
+  } finally {
+    await pool.close();
+  }
+}
+
 export async function countRows(settings: DatabaseSettings, database: string): Promise<{ departments: number; employees: number }> {
   const pool = await new sql.ConnectionPool(toMssqlConfig(settings, database)).connect();
   try {

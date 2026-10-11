@@ -25,3 +25,6 @@ __azurite_db*__.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Deployment staging folder (built by npm run deploy)
+.deploy/
