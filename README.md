@@ -68,6 +68,11 @@ Check it: open <http://localhost:7071/api/health>, then try the requests in [`re
 (VS Code with the REST Client extension), or run `npm run smoke` to call every endpoint once.
 No function key is needed locally.
 
+**Using Postman?** Import [`postman/employee-compensation.postman_collection.json`](postman/employee-compensation.postman_collection.json).
+It holds every request with tests, and runs in order in the Collection Runner (it creates one employee, changes
+it and deletes it). For Azure, set the collection variables `baseUrl` to the Azure URL and `functionKey` to your key
+(Current value only, so it stays on your machine). From the command line: `postman collection run postman/employee-compensation.postman_collection.json`.
+
 Stop the database with `npm run db:down` (data is kept). `docker compose down -v` deletes it.
 
 ### Troubleshooting

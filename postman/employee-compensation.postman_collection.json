@@ -1,0 +1,497 @@
+{
+  "info": {
+    "name": "Employee Compensation Service",
+    "description": "Every endpoint of the Employee Compensation Service, with tests.\n\nSet the collection variables:\n- baseUrl: http://localhost:7071/api (local, default) or https://func-compensation-c4p4kq.azurewebsites.net/api (Azure)\n- functionKey: leave empty locally; for Azure paste your function key into the Current value (it stays on your machine and is never part of this file)\n\nRun the whole collection in order with the Collection Runner: it creates one employee, changes it and deletes it again.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "x-functions-key", "type": "string" },
+      { "key": "value", "value": "{{functionKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:7071/api", "type": "string" },
+    { "key": "functionKey", "value": "", "type": "string" },
+    { "key": "createdEmployeeId", "value": "", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Every error response uses the same shape and carries a correlation id.",
+          "if (pm.response.code >= 400 && pm.response.code !== 401) {",
+          "  pm.test('error body has the standard shape', () => {",
+          "    const body = pm.response.json();",
+          "    pm.expect(body).to.have.property('error').that.is.a('string');",
+          "    pm.expect(body).to.have.property('message').that.is.a('string');",
+          "    pm.expect(body).to.have.property('correlationId').that.is.a('string');",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{baseUrl}}/health",
+        "description": "No key needed. Also wakes a paused serverless database (the first call after an idle hour can take about a minute)."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 and database ok', () => {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json()).to.eql({ status: 'ok', database: 'ok' });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Departments",
+      "item": [
+        {
+          "name": "List departments",
+          "request": { "method": "GET", "url": "{{baseUrl}}/departments" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with { items, count }', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.items).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(body.count).to.eql(body.items.length);",
+                  "  pm.expect(body.items[0]).to.have.all.keys('departmentId', 'departmentName', 'location');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Part A - Employees",
+      "item": [
+        {
+          "name": "List employees",
+          "request": { "method": "GET", "url": "{{baseUrl}}/employees" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with { items, count }', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.items).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(body.count).to.eql(body.items.length);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List employees in department 2",
+          "request": { "method": "GET", "url": "{{baseUrl}}/employees?departmentId=2" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 and every employee is in department 2', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.response.json().items.forEach((e) => pm.expect(e.departmentId).to.eql(2));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get employee 2 (no bonus: 5% default shown separately)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/employees/2" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with raw and effective compensation fields', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include.all.keys(",
+                  "    'employeeId', 'firstName', 'lastName', 'departmentId', 'departmentName', 'salary', 'bonus',",
+                  "    'hireDate', 'effectiveBonus', 'isDefaultBonus', 'totalCompensation', 'effectiveTotalCompensation');",
+                  "});",
+                  "pm.test('a NULL bonus stays null; the default appears only in effectiveBonus', () => {",
+                  "  const e = pm.response.json();",
+                  "  if (e.bonus === null) {",
+                  "    pm.expect(e.isDefaultBonus).to.be.true;",
+                  "    pm.expect(e.effectiveBonus).to.be.above(0);",
+                  "    pm.expect(e.totalCompensation).to.eql(e.salary);",
+                  "  } else {",
+                  "    pm.expect(e.isDefaultBonus).to.be.false;",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create employee",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Riya\",\n  \"lastName\": \"Joshi\",\n  \"departmentId\": 2,\n  \"salary\": 68000.50,\n  \"hireDate\": \"2025-01-06\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Only firstName, lastName and salary are required. The new employee's id is saved for the next requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201 with a Location header', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const e = pm.response.json();",
+                  "  pm.expect(pm.response.headers.get('Location')).to.eql(`/api/employees/${e.employeeId}`);",
+                  "  pm.collectionVariables.set('createdEmployeeId', e.employeeId);",
+                  "});",
+                  "pm.test('stored exactly as sent; no bonus means the default applies', () => {",
+                  "  const e = pm.response.json();",
+                  "  pm.expect(e).to.include({ firstName: 'Riya', lastName: 'Joshi', departmentId: 2, salary: 68000.5, hireDate: '2025-01-06', bonus: null, isDefaultBonus: true });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Give the new employee a bonus",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/employees/{{createdEmployeeId}}",
+            "body": { "mode": "raw", "raw": "{ \"bonus\": 5000 }", "options": { "raw": { "language": "json" } } },
+            "description": "Merge patch: only the fields sent change."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200; bonus set and other fields unchanged', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include({ bonus: 5000, isDefaultBonus: false, firstName: 'Riya', salary: 68000.5 });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clear the bonus (null)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/employees/{{createdEmployeeId}}",
+            "body": { "mode": "raw", "raw": "{ \"bonus\": null }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200; bonus cleared and the default applies again', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include({ bonus: null, isDefaultBonus: true });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the new employee",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/employees/{{createdEmployeeId}}" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 204', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the deleted employee (404)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/employees/{{createdEmployeeId}}" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404 NotFound', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error).to.eql('NotFound');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "item": [
+        {
+          "name": "400 - invalid fields",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"firstName\": \"\", \"salary\": 100.555, \"bonuss\": 10 }",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Every problem is listed: blank name, missing last name, three decimal places, misspelt field."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400 listing each invalid field', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  const fields = pm.response.json().details.map((d) => d.field);",
+                  "  pm.expect(fields).to.include.members(['firstName', 'lastName', 'salary', 'body']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - unknown employee",
+          "request": { "method": "GET", "url": "{{baseUrl}}/employees/2147483647" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 404', () => pm.response.to.have.status(404));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - unknown department",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"firstName\": \"Test\", \"lastName\": \"User\", \"salary\": 50000, \"departmentId\": 999999 }",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422 UnknownDepartment', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error).to.eql('UnknownDepartment');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No function key (401 in Azure; keys are not enforced locally)",
+          "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/employees/1" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const local = pm.request.url.getHost().includes('localhost');",
+                  "pm.test(local ? 'local: request allowed (200)' : 'Azure: request refused (401)', () => {",
+                  "  pm.response.to.have.status(local ? 200 : 401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Part B - Reports",
+      "item": [
+        {
+          "name": "1. Total bonus",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reports/total-bonus" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with a numeric total (never null)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().totalBonus).to.be.a('number').that.is.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Employees who have never received a bonus",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reports/employees-without-bonus" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 with { items, count }', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.count).to.eql(body.items.length);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Bonus as a percentage of salary",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reports/bonus-percentage" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200; only employees with a bonus; at most 2 decimal places; highest first', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json().items;",
+                  "  items.forEach((e, i) => {",
+                  "    pm.expect(e.bonus).to.not.be.null;",
+                  "    pm.expect(String(e.bonusPercentage)).to.match(/^\\d+(\\.\\d{1,2})?$/);",
+                  "    if (i > 0) pm.expect(e.bonusPercentage).to.be.at.most(items[i - 1].bonusPercentage);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Departments whose total bonus exceeds their average salary",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reports/departments-bonus-over-avg-salary" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200; every department returned strictly exceeds', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.response.json().items.forEach((d) => pm.expect(d.totalBonus).to.be.above(d.averageSalary));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Ranking by bonus (no bonus last)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reports/bonus-ranking" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200; ranks never decrease; once a bonus is null all later ones are null', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json().items;",
+                  "  let seenNull = false;",
+                  "  items.forEach((e, i) => {",
+                  "    if (i > 0) pm.expect(e.rank).to.be.at.least(items[i - 1].rank);",
+                  "    if (seenNull) pm.expect(e.bonus).to.be.null;",
+                  "    if (e.bonus === null) seenNull = true;",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Highest salary, and whether that person also has the highest total compensation",
+          "request": { "method": "GET", "url": "{{baseUrl}}/reports/top-earner" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200; answers both parts of the question', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.all.keys('highestSalary', 'highestTotalCompensation', 'topSalaryEmployees', 'topTotalCompensationEmployees');",
+                  "  body.topSalaryEmployees.forEach((e) => {",
+                  "    pm.expect(e.salary).to.eql(body.highestSalary);",
+                  "    pm.expect(e.hasHighestTotalCompensation).to.be.a('boolean');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
