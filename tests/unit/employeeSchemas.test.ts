@@ -64,6 +64,16 @@ describe('createEmployeeSchema', () => {
     expect(issuesFor(createEmployeeSchema, { ...valid, hireDate: '01/02/2024' })?.[0]?.field).toBe('hireDate');
   });
 
+  it('rejects year 0000, which SQL Server DATE cannot store, and accepts the full DATE range', () => {
+    expect(issuesFor(createEmployeeSchema, { ...valid, hireDate: '0000-01-01' })?.[0]).toEqual({
+      field: 'hireDate',
+      issue: 'must be 0001-01-01 or later',
+    });
+    expect(issuesFor(updateEmployeeSchema, { hireDate: '0000-12-31' })?.[0]?.field).toBe('hireDate');
+    expect(parseWith(createEmployeeSchema, { ...valid, hireDate: '0001-01-01' }).hireDate).toBe('0001-01-01');
+    expect(parseWith(createEmployeeSchema, { ...valid, hireDate: '9999-12-31' }).hireDate).toBe('9999-12-31');
+  });
+
   it('rejects unknown fields such as a misspelt "bonuss"', () => {
     expect(issuesFor(createEmployeeSchema, { ...valid, bonuss: 100 })?.[0]?.field).toBe('body');
   });

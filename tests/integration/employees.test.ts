@@ -118,6 +118,21 @@ describe('POST /api/employees', () => {
     expect((await get('11')).jsonBody).toMatchObject({ ...body, departmentName: 'Beta' });
   });
 
+  it('stores the first and last dates SQL Server DATE allows, and returns 400 (not 500) for year 0000', async () => {
+    const first = await call(createEmployee, 'POST', 'employees', {
+      body: { firstName: 'Early', lastName: 'Date', salary: 1, hireDate: '0001-01-01' },
+    });
+    const last = await call(createEmployee, 'POST', 'employees', {
+      body: { firstName: 'Late', lastName: 'Date', salary: 1, hireDate: '9999-12-31' },
+    });
+    expect(first.jsonBody).toMatchObject({ hireDate: '0001-01-01' });
+    expect(last.jsonBody).toMatchObject({ hireDate: '9999-12-31' });
+
+    const yearZero = { hireDate: '0000-01-01' };
+    expect((await call(createEmployee, 'POST', 'employees', { body: { firstName: 'No', lastName: 'Date', salary: 1, ...yearZero } })).status).toBe(400);
+    expect((await patch('1', yearZero)).status).toBe(400);
+  });
+
   it('returns 422 for a department that does not exist, and creates nothing', async () => {
     const response = await call(createEmployee, 'POST', 'employees', {
       body: { firstName: 'Nia', lastName: 'New', salary: 45000, departmentId: 99 },

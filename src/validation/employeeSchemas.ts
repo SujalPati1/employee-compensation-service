@@ -27,7 +27,11 @@ const moneySchema = z
 const salarySchema = moneySchema.refine((value) => value > 0, 'must be greater than 0');
 const bonusSchema = moneySchema.refine((value) => value >= 0, 'must be 0 or more');
 const departmentIdSchema = z.number().int('must be a whole number').min(1, 'must be 1 or more').max(MAX_SQL_INT);
-const hireDateSchema = z.iso.date('must be a date in YYYY-MM-DD format');
+// The ISO format allows year 0000, but SQL Server's DATE type starts at 0001-01-01.
+// ISO dates compare correctly as text, so a string comparison is enough.
+const hireDateSchema = z.iso
+  .date('must be a date in YYYY-MM-DD format')
+  .refine((value) => value >= '0001-01-01', 'must be 0001-01-01 or later');
 
 /** POST /employees. Unknown fields are rejected so typos such as "bonuss" are not silently ignored. */
 export const createEmployeeSchema = z.strictObject({
