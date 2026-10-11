@@ -1,0 +1,89 @@
+# Continuous integration: on every push to main and every pull request, check the code and run
+# the full test suite (unit + integration) against a real SQL Server.
+# No Azure credentials are used; nothing here deploys.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Throwaway SQL Server that exists only inside this run. The password is derived from the run
+  # ID, so no password is stored in the repository.
+  SQL_AUTH: sql
+  SQL_SERVER: localhost
+  SQL_PORT: "14333"
+  SQL_DATABASE: Compensation
+  SQL_USER: sa
+  SQL_PASSWORD: Ci-${{ github.run_id }}-${{ github.run_attempt }}-Aa1
+  SQL_TRUST_SERVER_CERTIFICATE: "true"
+
+jobs:
+  test:
+    name: Typecheck, lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: Developer
+          # Must match SQL_PASSWORD above. The env context is not available to service
+          # containers, so the same expression is repeated here.
+          MSSQL_SA_PASSWORD: Ci-${{ github.run_id }}-${{ github.run_attempt }}-Aa1
+        ports:
+          - 14333:1433
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for known vulnerabilities (runtime dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Wait for SQL Server
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker exec ${{ job.services.sql.id }} /opt/mssql-tools18/bin/sqlcmd \
+                 -S localhost -U sa -P "$SQL_PASSWORD" -C -b -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "SQL Server is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "SQL Server did not become ready in time." >&2
+          exit 1
+
+      - name: Apply SQL scripts twice (they must be re-runnable)
+        run: |
+          node dist/scripts/db-setup.js
+          node dist/scripts/db-setup.js
+
+      - name: Run tests (unit + integration)
+        run: npm test
