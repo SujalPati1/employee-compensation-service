@@ -7,7 +7,7 @@
 //   - The Function App has a system-assigned managed identity.
 //   - Storage has account-key access disabled; the app reaches it through its identity.
 //   - Azure SQL accepts only Microsoft Entra sign-ins; the deploying user is its admin and
-//     grants the app's identity read/write access with sql/azure/create-app-user.sql.
+//     grants the app's identity read/write access with `npm run db:setup -- --azure <server> --grant-app <app>`.
 
 @description('Azure region. Must be one the subscription policy allows; Flex Consumption is required.')
 param location string = resourceGroup().location
