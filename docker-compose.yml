@@ -1,0 +1,26 @@
+# Local SQL Server for development and tests.
+# Values come from .env, which `npm run setup` generates (it is gitignored).
+name: employee-compensation
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${SQL_PASSWORD:?SQL_PASSWORD is not set. Run "npm run setup" first.}
+    ports:
+      # Host port 14333 avoids clashing with a SQL Server already installed on 1433.
+      - "${SQL_PORT:-14333}:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -b -Q \"SELECT 1\" > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  # Keeps data between restarts. `docker compose down -v` deletes it for a clean start.
+  sqldata:
