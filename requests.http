@@ -1,0 +1,121 @@
+### Employee Compensation Service: example requests
+#
+# Open in VS Code with the REST Client extension (humao.rest-client) and click "Send Request"
+# above any request.
+#
+# Local:  start the API with `npm start`. No key is needed locally.
+# Azure:  switch baseUrl to the Azure line below, and add your function key to the .env file
+#         (gitignored, never committed):
+#           AZURE_FUNCTION_KEY=<key>
+#         Get the key with:
+#           az functionapp keys list -g rg-compensation-eastasia -n func-compensation-c4p4kq --query functionKeys.default -o tsv
+
+@baseUrl = http://localhost:7071/api
+# @baseUrl = https://func-compensation-c4p4kq.azurewebsites.net/api
+@key = {{$dotenv AZURE_FUNCTION_KEY}}
+
+
+### Health (no key; also wakes a paused database before a demo)
+GET {{baseUrl}}/health
+
+
+### ─────────────────────────────── Departments
+
+### List departments
+GET {{baseUrl}}/departments
+x-functions-key: {{key}}
+
+
+### ─────────────────────────────── Part A: employees
+
+### List all employees
+GET {{baseUrl}}/employees
+x-functions-key: {{key}}
+
+### List employees in one department
+GET {{baseUrl}}/employees?departmentId=2
+x-functions-key: {{key}}
+
+### Get one employee (Meera has no bonus: see effectiveBonus and isDefaultBonus)
+GET {{baseUrl}}/employees/2
+x-functions-key: {{key}}
+
+### Create an employee (only firstName, lastName and salary are required)
+# @name created
+POST {{baseUrl}}/employees
+x-functions-key: {{key}}
+Content-Type: application/json
+
+{
+  "firstName": "Riya",
+  "lastName": "Joshi",
+  "departmentId": 2,
+  "salary": 68000.50,
+  "hireDate": "2025-01-06"
+}
+
+### Give the new employee a bonus (merge patch: other fields stay unchanged)
+PATCH {{baseUrl}}/employees/{{created.response.body.employeeId}}
+x-functions-key: {{key}}
+Content-Type: application/json
+
+{ "bonus": 5000 }
+
+### Clear the bonus again (null means "no bonus")
+PATCH {{baseUrl}}/employees/{{created.response.body.employeeId}}
+x-functions-key: {{key}}
+Content-Type: application/json
+
+{ "bonus": null }
+
+### Delete the new employee (204, then 404 if repeated)
+DELETE {{baseUrl}}/employees/{{created.response.body.employeeId}}
+x-functions-key: {{key}}
+
+
+### ─────────────────────────────── Error handling
+
+### 400: invalid fields (every problem is listed)
+POST {{baseUrl}}/employees
+x-functions-key: {{key}}
+Content-Type: application/json
+
+{ "firstName": "", "salary": 100.555, "bonuss": 10 }
+
+### 404: unknown employee
+GET {{baseUrl}}/employees/9999
+x-functions-key: {{key}}
+
+### 422: department does not exist
+POST {{baseUrl}}/employees
+x-functions-key: {{key}}
+Content-Type: application/json
+
+{ "firstName": "Test", "lastName": "User", "salary": 50000, "departmentId": 99 }
+
+
+### ─────────────────────────────── Part B: reports
+
+### 1. Total bonus (no bonus counts as 0)
+GET {{baseUrl}}/reports/total-bonus
+x-functions-key: {{key}}
+
+### 2. Employees who have never received a bonus
+GET {{baseUrl}}/reports/employees-without-bonus
+x-functions-key: {{key}}
+
+### 3. Bonus as a percentage of salary (2 dp)
+GET {{baseUrl}}/reports/bonus-percentage
+x-functions-key: {{key}}
+
+### 4. Departments whose total bonus exceeds their average salary
+GET {{baseUrl}}/reports/departments-bonus-over-avg-salary
+x-functions-key: {{key}}
+
+### 5. Ranking by bonus (no bonus ranked last)
+GET {{baseUrl}}/reports/bonus-ranking
+x-functions-key: {{key}}
+
+### 6. Highest salary, and whether that person also has the highest total compensation
+GET {{baseUrl}}/reports/top-earner
+x-functions-key: {{key}}
