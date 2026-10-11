@@ -166,7 +166,7 @@ Every error uses one shape. `correlationId` matches the request in Application I
 
 ```bash
 npm run db:up   # integration tests use a separate CompensationTest database
-npm test        # 120 tests: 72 unit + 48 integration
+npm test        # 124 tests: 73 unit + 51 integration
 ```
 
 - **Integration tests run the real SQL** against SQL Server in Docker. The report logic lives in SQL, so mocking the database would test nothing.
