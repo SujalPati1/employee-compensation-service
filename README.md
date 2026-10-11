@@ -70,6 +70,16 @@ No function key is needed locally.
 
 Stop the database with `npm run db:down` (data is kept). `docker compose down -v` deletes it.
 
+### Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `Login failed for user 'sa'` | The database volume was created with an older password (SQL Server only sets it on first start). Reset it: `docker compose down -v`, then `npm run db:up` and `npm run db:setup`. |
+| `Is the database running?` | Start Docker Desktop, then `npm run db:up`. |
+| Port `14333` or `7071` already in use | Change `SQL_PORT` in `.env` and `local.settings.json`, or stop the other process. |
+| `func: command not found` | Install Azure Functions Core Tools v4 and open a new terminal. |
+| First request to Azure takes about a minute | The serverless database was paused; see [Before a demo](#before-a-demo). |
+
 ### Commands
 
 | Command | What it does |
