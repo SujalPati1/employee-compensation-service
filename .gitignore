@@ -28,3 +28,8 @@ Thumbs.db
 
 # Deployment staging folder (built by npm run deploy)
 .deploy/
+
+# Files the Postman app creates when it opens this folder (may hold keys you type into it)
+.postman/
+postman/globals/
+postman/environments/
