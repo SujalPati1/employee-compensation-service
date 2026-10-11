@@ -25,7 +25,8 @@
   "dependencies": {
     "@azure/functions": "^4.16.5",
     "@azure/identity": "^4.13.3",
-    "mssql": "^12.7.4"
+    "mssql": "^12.7.4",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
